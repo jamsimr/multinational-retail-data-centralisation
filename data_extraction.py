@@ -6,9 +6,6 @@ import requests
 import boto3
 import csv
 
-retrieve_a_store_endpoint = 'https://aqj7u5id95.execute-api.eu-west-1.amazonaws.com/prod/store_details'
-number_of_stores_endpoint = 'https://aqj7u5id95.execute-api.eu-west-1.amazonaws.com/prod/number_stores'
-
 class DataExtractor:
     def __init__(self, db_connector):
         '''
@@ -135,11 +132,14 @@ class DataExtractor:
         s3_client.download_file(s3_bucket, s3_key, local_file_path)
     
         # Read the CSV file into a DataFrame
-        extracted_data = pd.read_csv(local_file_path)
-    
+        #extracted_data = pd.read_csv(local_file_path)
+
+        # Read the JSON file into a DataFrame
+        extracted_data = pd.read_json(local_file_path)
+
         return extracted_data
-    
+
 data_extractor = DataExtractor(db_connector)
-orders_df = data_extractor.read_rds_table('orders_table')
-orders_df.to_csv('orders.csv', index=False)
+events_df = data_extractor.extract_from_s3('s3://data-handling-public/date_details.json')
+events_df.to_csv('events.csv', index=False)
 # %%

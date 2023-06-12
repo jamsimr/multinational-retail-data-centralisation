@@ -92,5 +92,4 @@ db_connector = DatabaseConnector()
 pull_engine = db_connector.pull_engine
 upload_engine = db_connector.upload_engine
 table_names = db_connector.list_db_tables(pull_engine)
-print(table_names)
 # %%

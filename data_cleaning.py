@@ -1,13 +1,12 @@
 #%%
 import pandas as pd
 from data_extraction import DataExtractor
-from database_utils import DatabaseConnector, pull_engine
+from database_utils import DatabaseConnector
 import phonenumbers
-import re
 
 db_connector = DatabaseConnector()
 data_extractor = DataExtractor(db_connector)
-orders_df = data_extractor.read_rds_table('orders_table')
+events_df = pd.read_csv('events.csv')
 
 class DataCleaning:
     def __init__(self, df, db_connector):
@@ -246,7 +245,7 @@ class DataCleaning:
         """
         Cleans the order data in the DataFrame.
 
-        Drops first name, last name and 1 columns and reindexes the data
+        Drops first name, last name and 1 columns and reindexes the data.
 
         Returns:
             pandas.DataFrame: The cleaned DataFrame.
@@ -254,7 +253,8 @@ class DataCleaning:
         df = self.df.copy()
 
         # Reindexes the data
-        df.sort_values(by='index')
+        df['index'] = df['index'].astype(int)
+        df = df.sort_values(by='index')
 
         # Removes first name, last name and 1 columns
         df = df.drop(columns=['first_name', 'last_name', '1'])
@@ -263,16 +263,36 @@ class DataCleaning:
 
         return df
 
-order_cleaner = DataCleaning(orders_df, db_connector)
-order_cleaner_df = order_cleaner.clean_orders_data()
-order_cleaner_df.to_csv('cleaned_order_data.csv', index=False)
+    def clean_events_data(self):
+        """
+        Cleans the events data in the DataFrame.
 
-'''weight_cleaner = DataCleaning(products_df, db_connector)
-weight_cleaner_df = weight_cleaner.convert_product_weights()
-product_cleaner = DataCleaning(weight_cleaner_df, db_connector)
-product_cleaner.clean_products_data()
-clean_product_data_df = product_cleaner.df
-table_name = 'dim_products'
-db_connector.upload_to_table(clean_product_data_df, table_name)'''
+        Drops rows and columns with NULL values, removes random entries.
+
+        Returns:
+            pandas.DataFrame: The cleaned DataFrame.
+        """
+
+        df = self.df.copy()
+
+        df = df.replace('NULL', pd.NA, regex=False)  # Replaces "NULL" entries with NULL
+        df = df.dropna()  # Drop rows with NULL values
+        #df = df.dropna(axis=1)  # Drop columns with NULL values
+
+        # Define the regex pattern for random entries
+        random_pattern = r'^[A-Z0-9]{10}$'  # Matches 10-character entries with letters and numbers
+        # Identify and drop rows with random entries
+        mask = df.apply(lambda row: row.str.match(random_pattern).rolling(window=3).sum().max() != 3, axis=1)
+        df = df[mask]
+
+        self.df = df  # Updates the dataframe instance of the class
+
+        return df
+
+events_cleaner = DataCleaning(events_df, db_connector)
+events_cleaner_df = events_cleaner.clean_events_data()
+#events_cleaner_df.to_csv('cleaned_events.csv', index=False)
+table_name = 'dim_date_times'
+db_connector.upload_to_table(events_cleaner_df, table_name)
 
 # %%
