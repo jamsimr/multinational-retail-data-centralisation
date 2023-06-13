@@ -1,0 +1,134 @@
+# Changing type of columns for orders_table
+
+ALTER TABLE orders_table
+ALTER COLUMN date_uuid TYPE UUID USING date_uuid::uuid,
+ALTER COLUMN user_uuid TYPE UUID USING user_uuid::uuid,
+ALTER COLUMN card_number TYPE VARCHAR(19),
+ALTER COLUMN store_code TYPE VARCHAR(12),
+ALTER COLUMN product_code TYPE VARCHAR(11),
+ALTER COLUMN product_quantity TYPE SMALLINT;
+
+# Changing type of columns for dim_users
+
+ALTER TABLE dim_users
+ALTER COLUMN first_name TYPE VARCHAR(255),
+ALTER COLUMN last_name TYPE VARCHAR(255),
+ALTER COLUMN date_of_birth TYPE DATE,
+ALTER COLUMN country_code TYPE VARCHAR(3),
+ALTER COLUMN user_uuid TYPE UUID USING user_uuid::uuid,
+ALTER COLUMN join_date TYPE DATE;
+
+# Find max CHAR length of a column
+
+SELECT MAX(LENGTH(CAST(country_code AS text))) AS max_length
+FROM dim_store_details;
+
+# Changing type of columns for dim_store_details (USING suggestions came from PGAdmin 4)
+
+ALTER TABLE dim_store_details
+ALTER COLUMN longitude TYPE FLOAT USING longitude::double precision,
+ALTER COLUMN locality TYPE VARCHAR(255),
+ALTER COLUMN store_code TYPE VARCHAR(11),
+ALTER COLUMN staff_numbers TYPE SMALLINT USING staff_numbers::smallint,
+ALTER COLUMN opening_date TYPE DATE USING opening_date::date,
+ALTER COLUMN store_type DROP NOT NULL,
+ALTER COLUMN store_type TYPE VARCHAR(255),
+ALTER COLUMN latitude TYPE FLOAT USING latitude::double precision,
+ALTER COLUMN country_code TYPE VARCHAR(2),
+ALTER COLUMN continent TYPE VARCHAR(255);
+
+# Remove £ from product_price column
+
+UPDATE dim_products
+SET product_price = REPLACE(product_price, '£', '')
+WHERE product_price LIKE '%£%';
+
+# Creates a new weight_class column based on weight column, added instructions to extract numerical values from 'xx kg' weight column
+
+ALTER TABLE dim_products
+ADD COLUMN weight_class VARCHAR(255);
+
+UPDATE dim_products
+SET weight_class =
+  CASE
+    WHEN substring(weight from '^[0-9.]+')::numeric < 2 THEN 'Light'
+    WHEN substring(weight from '^[0-9.]+')::numeric >= 2 AND substring(weight from '^[0-9.]+')::numeric < 40 THEN 'Mid_Sized'
+    WHEN substring(weight from '^[0-9.]+')::numeric >= 40 AND substring(weight from '^[0-9.]+')::numeric < 140 THEN 'Heavy'
+    WHEN substring(weight from '^[0-9.]+')::numeric >= 140 THEN 'Truck_Required'
+    ELSE NULL
+  END;
+
+# Rename removed to still_available column
+
+ALTER TABLE dim_products
+RENAME COLUMN removed TO still_available;
+
+# Changing type of columns for dim_products, for weight numerical values are extracted from 'xx kg' values and still_available BOOLEAN value has been defined 
+
+ALTER TABLE dim_products
+ALTER COLUMN product_price  TYPE FLOAT USING product_price ::double precision,
+ALTER COLUMN weight TYPE FLOAT USING (SUBSTRING(weight, '^\d+(\.\d+)?')::FLOAT),
+ALTER COLUMN "EAN" TYPE VARCHAR(17),
+ALTER COLUMN product_code TYPE VARCHAR(11),
+ALTER COLUMN date_added TYPE DATE USING date_added::date,
+ALTER COLUMN uuid TYPE UUID USING uuid::uuid,
+ALTER COLUMN still_available TYPE BOOLEAN USING CASE WHEN still_available = 'Still_available' THEN TRUE ELSE FALSE END,
+ALTER COLUMN weight_class TYPE VARCHAR(14);
+
+# Changing type of columns for dim_date_times
+
+ALTER TABLE dim_date_times
+ALTER COLUMN month TYPE VARCHAR(14),
+ALTER COLUMN year TYPE VARCHAR(17),
+ALTER COLUMN day TYPE VARCHAR(11),
+ALTER COLUMN time_period TYPE VARCHAR(14),
+ALTER COLUMN date_uuid TYPE UUID USING date_uuid::uuid;
+
+# Changing type of columns for dim_card_details
+
+ALTER TABLE dim_card_details
+ALTER COLUMN card_number TYPE VARCHAR(19),
+ALTER COLUMN expiry_date TYPE VARCHAR(5),
+ALTER COLUMN date_payment_confirmed TYPE DATE;
+
+# Add primary keys for 'dim' tables from their respecitve column in orders_table
+
+ALTER TABLE dim_users
+ADD CONSTRAINT dim_users_pk PRIMARY KEY (user_uuid);
+
+ALTER TABLE dim_store_details
+ADD CONSTRAINT dim_store_details_pk PRIMARY KEY (store_code);
+
+ALTER TABLE dim_products
+ADD CONSTRAINT dim_products_pk PRIMARY KEY (product_code);
+
+ALTER TABLE dim_date_times
+ADD CONSTRAINT dim_date_times_pk PRIMARY KEY (date_uuid);
+
+ALTER TABLE dim_card_details
+ADD CONSTRAINT dim_card_details_pk PRIMARY KEY (card_number);
+
+# Making new column in orders_table to reflect 11 CHAR limit on dim_store_details to allow for foriegn key constraint
+
+ALTER TABLE orders_table DROP CONSTRAINT orders_store_fk;
+ALTER TABLE orders_table ADD COLUMN valid_store_code VARCHAR(11);
+UPDATE orders_table SET valid_store_code = store_code WHERE CHAR_LENGTH(store_code) = 11;
+
+# Adding foreign key cfor respective tables
+
+ALTER TABLE orders_table
+ADD CONSTRAINT orders_user_fk FOREIGN KEY (user_uuid) REFERENCES dim_user (user_uuid);
+
+ALTER TABLE orders_table
+ADD CONSTRAINT orders_store_fk FOREIGN KEY (valid_store_code) REFERENCES dim_store_details (store_code);
+
+ALTER TABLE orders_table
+ADD CONSTRAINT orders_product_fk FOREIGN KEY (product_code) REFERENCES dim_products (product_code);
+
+ALTER TABLE orders_table
+ADD CONSTRAINT orders_date_fk FOREIGN KEY (date_uuid) REFERENCES dim_date_times (date_uuid);
+
+ALTER TABLE orders_table
+ADD CONSTRAINT orders_card_fk FOREIGN KEY (card_number) REFERENCES dim_card_details (card_number);
+
+

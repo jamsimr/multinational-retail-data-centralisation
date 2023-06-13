@@ -1,0 +1,195 @@
+# Task 1; Count the stores by country
+
+SELECT country_code AS country, COUNT(*) AS total_no_stores
+FROM dim_store_details
+GROUP BY country_code;
+
+"DE"	141
+"US"	34
+"GB"	265
+
+# Task 2; List top 7 localities with the most amount of stores
+
+SELECT locality, COUNT(*) AS total_no_stores
+FROM dim_store_details
+GROUP BY locality
+ORDER BY total_no_stores DESC
+LIMIT 7;
+
+"Chapletown"	14
+"Belper"	13
+"Bushey"	12
+"Exeter"	11
+"Arbroath"	10
+"High Wycombe"	10
+"Rutherglen"	10
+
+# Task 3; Months that produce the average highest cost of sales
+
+SELECT dt.month, SUM(p.product_price * o.product_quantity) AS total_sales
+FROM orders_table o
+JOIN dim_date_times dt ON o.date_uuid = dt.date_uuid
+JOIN dim_products p ON o.product_code = p.product_code
+GROUP BY dt.month
+ORDER BY total_sales DESC;
+
+"8"	673295.6800000014
+"1"	668041.4500000014
+"10"	657335.8400000015
+"5"	650321.4300000013
+"7"	645741.7000000015
+"3"	645463.0000000014
+"6"	635578.9900000022
+"12"	635329.0900000015
+"9"	633993.6200000013
+"11"	630757.0800000016
+"4"	630022.7700000016
+"2"	616452.9900000014
+
+# Task 4; Quantify online sales
+
+SELECT
+    COUNT(*) AS numbers_of_sales,
+    SUM(product_quantity) AS product_quantity_count,
+    CASE
+        WHEN LENGTH(store_code) = 12 THEN 'Web'
+        ELSE 'Offline'
+    END AS location
+FROM
+    orders_table
+GROUP BY
+    CASE
+        WHEN LENGTH(store_code) = 12 THEN 'Web'
+        ELSE 'Offline'
+    END;
+
+93166	374047	"Offline"
+26957	107739	"Web"
+
+# Task 5; Calculate store type percentage sales
+
+WITH total_sales_by_type AS (
+  SELECT sd.store_type, SUM(p.product_price * o.product_quantity) AS total_sales
+  FROM orders_table o
+  JOIN dim_store_details sd ON o.store_code = sd.store_code
+  JOIN dim_products p ON o.product_code = p.product_code
+  WHERE LENGTH(o.store_code) = 11
+  GROUP BY sd.store_type
+
+  UNION
+
+  SELECT 'Web portal' AS store_type, SUM(p.product_price * o.product_quantity) AS total_sales
+  FROM orders_table o
+  JOIN dim_products p ON o.product_code = p.product_code
+  WHERE LENGTH(o.store_code) = 12
+  GROUP BY store_type
+),
+total_sales_overall AS (
+  SELECT SUM(total_sales) AS overall_total_sales
+  FROM total_sales_by_type
+)
+SELECT store_type, total_sales,
+       ROUND((total_sales::numeric / overall_total_sales::numeric * 100), 2) AS percentage_total
+FROM total_sales_by_type, total_sales_overall
+ORDER BY total_sales DESC;
+
+"Local"	3440896.519999883	44.56
+"Web portal"	1726547.0499999449	22.36
+"Super Store"	1224293.6499999936	15.85
+"Mall Kiosk"	698791.6100000017	9.05
+"Outlet"	631804.8100000015	8.18
+
+# Task 6; Month in each year that producd highest cost of sales
+
+WITH monthly_sales AS (
+  SELECT
+    dt.year,
+    dt.month,
+    SUM(p.product_price * o.product_quantity) AS total_sales,
+    ROW_NUMBER() OVER (PARTITION BY dt.year ORDER BY SUM(p.product_price * o.product_quantity) DESC) AS sales_rank
+  FROM
+    orders_table o
+    JOIN dim_date_times dt ON o.date_uuid = dt.date_uuid
+    JOIN dim_products p ON o.product_code = p.product_code
+  GROUP BY
+    dt.year,
+    dt.month
+)
+SELECT
+  year,
+  month,
+  total_sales
+FROM
+  monthly_sales
+WHERE
+  sales_rank = 1
+ORDER BY total_sales DESC;
+
+"1994"	"3"	27936.769999999997
+"2019"	"1"	27356.139999999992
+"2009"	"8"	27091.669999999995
+"1997"	"11"	26679.979999999996
+"2018"	"12"	26310.969999999998
+"2017"	"9"	26236.66999999999
+"2010"	"5"	25798.119999999995
+"1996"	"8"	25648.289999999994
+"2000"	"1"	25614.53999999999
+
+# Task 7; Staff Headcount
+
+SELECT country_code, SUM(staff_numbers) AS total_staff_numbers
+FROM dim_store_details
+GROUP BY country_code
+ORDER BY total_staff_numbers DESC;
+
+"GB"	12982
+"DE"	6123
+"US"	1384
+
+# Task 8; German store type wth most sales
+
+SELECT sd.store_type, sd.country_code, SUM(p.product_price * o.product_quantity) AS total_sales
+FROM orders_table o
+JOIN dim_store_details sd ON o.store_code = sd.store_code
+JOIN dim_products p ON o.product_code = p.product_code
+WHERE sd.country_code = 'DE'
+GROUP BY sd.store_type, sd.country_code
+ORDER BY total_sales ASC;
+
+"Outlet"	"DE"	198373.57000000033
+"Mall Kiosk"	"DE"	247634.2000000005
+"Super Store"	"DE"	384625.02999999945
+"Local"	"DE"	1109909.5899999603
+
+# Task 9; How quickly is the company making sales
+
+WITH sales_time AS (
+    SELECT 
+        dt.year AS order_year,
+        dt.month AS order_month,
+        dt.day AS order_day,
+        EXTRACT(EPOCH FROM TO_TIMESTAMP(LEAD(CONCAT(dt.timestamp, ' ', dt.day, '-', dt.month, '-', dt.year)) OVER (ORDER BY dt.year, dt.month, dt.day, dt.timestamp), 'HH24:MI:SS DD-MM-YYYY') - TO_TIMESTAMP(CONCAT(dt.timestamp, ' ', dt.day, '-', dt.month, '-', dt.year), 'HH24:MI:SS DD-MM-YYYY')) AS time_between_sales
+    FROM dim_date_times dt
+)
+SELECT 
+    order_year,
+    CONCAT(
+        '{"hours": ',
+        FLOOR(AVG(time_between_sales) / 3600),
+        ', "minutes": ',
+        FLOOR((AVG(time_between_sales) / 60) % 60),
+        ', "seconds": ',
+        FLOOR(AVG(time_between_sales) % 60),
+        ', "milliseconds": ',
+        FLOOR((AVG(time_between_sales) - FLOOR(AVG(time_between_sales))) * 1000),
+        '}'
+    ) AS average_time_taken
+FROM sales_time
+GROUP BY order_year
+ORDER BY FLOOR(AVG(time_between_sales) / 3600) ASC, FLOOR((AVG(time_between_sales) / 60) % 60), FLOOR(AVG(time_between_sales) % 60) ASC;
+
+"2008"	"{""hours"": 2, ""minutes"": 13, ""seconds"": 3, ""milliseconds"": 532}"
+"2022"	"{""hours"": 2, ""minutes"": 13, ""seconds"": 6, ""milliseconds"": 778}"
+"2002"	"{""hours"": 2, ""minutes"": 13, ""seconds"": 49, ""milliseconds"": 478}"
+"1993"	"{""hours"": 2, ""minutes"": 15, ""seconds"": 40, ""milliseconds"": 129}"
+"2013"	"{""hours"": 2, ""minutes"": 17, ""seconds"": 15, ""milliseconds"": 655}"
